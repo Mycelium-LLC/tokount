@@ -1,0 +1,572 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>tokount</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#0b0b0f; --paper:#f6f1e7;
+  --display:"Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  --gutter:clamp(20px,5vw,72px);
+  --ease:cubic-bezier(.2,.8,.1,1);
+}
+*{box-sizing:border-box;margin:0}
+html,body{height:100%;background:var(--ink);color:var(--paper);overflow:hidden}
+body{font-family:var(--display);-webkit-font-smoothing:antialiased;touch-action:pan-y}
+button,input{font:inherit;color:inherit}
+
+/* ---------- stage ---------- */
+.stage{position:fixed;inset:0}
+.slide{
+  position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;
+  padding:calc(var(--gutter) + 28px) var(--gutter) var(--gutter);
+  background:var(--bg);color:var(--fg);overflow:hidden;
+  visibility:hidden;clip-path:circle(0% at var(--ox,50%) var(--oy,50%));
+  transition:clip-path .9s var(--ease),visibility 0s .9s;
+}
+.slide.on{visibility:visible;clip-path:circle(150% at var(--ox,50%) var(--oy,50%));transition:clip-path .9s var(--ease),visibility 0s;z-index:2}
+.slide.was{visibility:visible;z-index:1}
+.inner{position:relative;z-index:2;max-inline-size:1100px;inline-size:100%;margin-inline:auto;flex-shrink:0;transform:scale(var(--fit,1));transform-origin:center center}
+
+.lockup{display:block;block-size:clamp(22px,3.6vh,34px);inline-size:auto;margin-block-end:clamp(18px,4vh,40px)}
+.kicker{font-family:var(--mono);font-size:clamp(12px,1.3vw,15px);letter-spacing:.14em;text-transform:uppercase;opacity:.75;margin-block-end:clamp(14px,2.4vh,28px)}
+.huge{font-weight:800;font-size:min(clamp(56px,15vw,220px),19vh);line-height:.86;letter-spacing:-.045em;font-variant-numeric:tabular-nums}
+.big{font-weight:800;font-size:min(clamp(34px,7.4vw,112px),11vh);line-height:.92;letter-spacing:-.035em}
+.mid{font-weight:600;font-size:clamp(22px,3vw,40px);line-height:1.1;letter-spacing:-.015em}
+.say{font-size:clamp(17px,1.9vw,24px);line-height:1.35;max-inline-size:34ch;margin-block-start:clamp(16px,3vh,32px);font-weight:400}
+.say b{font-weight:800}
+.fine{font-family:var(--mono);font-size:12px;opacity:.6;margin-block-start:clamp(14px,3vh,28px);max-inline-size:60ch;line-height:1.5}
+
+/* reveal choreography */
+.slide [data-r]{opacity:0;transform:translateY(28px);transition:opacity .7s var(--ease),transform .9s var(--ease)}
+.slide.on [data-r]{opacity:1;transform:none;transition-delay:calc(var(--d,0) * 120ms + 250ms)}
+
+/* giant backdrop numerals / shapes */
+.ghost{position:absolute;z-index:1;font-weight:800;line-height:.8;letter-spacing:-.06em;color:var(--ghost);pointer-events:none;white-space:nowrap;
+  font-size:clamp(220px,48vw,760px);inset-inline-end:-.08em;inset-block-end:-.12em;transform:translateY(40px);transition:transform 1.6s var(--ease)}
+.slide.on .ghost{transform:none}
+.blob{position:absolute;z-index:1;border-radius:50%;filter:blur(2px);pointer-events:none;background:var(--blob);
+  inline-size:60vmax;block-size:60vmax;inset-inline-end:-18vmax;inset-block-start:-20vmax;transform:scale(.4) rotate(0);transition:transform 2s var(--ease)}
+.slide.on .blob{transform:scale(1) rotate(40deg)}
+
+/* ---------- chrome ---------- */
+.bars{position:fixed;z-index:10;inset-block-start:max(12px,env(safe-area-inset-top));inset-inline:var(--gutter);display:flex;gap:4px}
+.bars i{flex:1;block-size:4px;border-radius:2px;background:color-mix(in srgb,currentColor 25%,transparent);overflow:hidden;position:relative}
+.bars i::after{content:"";position:absolute;inset:0;background:currentColor;transform:scaleX(0);transform-origin:left;transition:transform .5s var(--ease)}
+.bars i.done::after{transform:scaleX(1)}
+.chrome{color:var(--chrome,#fff);transition:color .6s}
+.hint{position:fixed;z-index:10;inset-block-end:max(14px,env(safe-area-inset-bottom));inset-inline-end:var(--gutter);font-family:var(--mono);font-size:12px;opacity:.55;letter-spacing:.08em}
+.tap{position:fixed;inset-block:0;z-index:5;inline-size:30%;background:none;border:0;cursor:pointer}
+.tap.prev{inset-inline-start:0}.tap.next{inset-inline-end:0;inline-size:70%}
+.tap:focus-visible{outline:3px solid currentColor;outline-offset:-6px}
+.ui{position:relative;z-index:6}
+
+/* ---------- pieces ---------- */
+.row{margin-block-start:clamp(18px,3.4vh,34px);display:flex;flex-wrap:wrap;gap:clamp(16px,4vw,56px);align-items:flex-end}
+.stat .n{font-weight:800;font-size:clamp(34px,5.4vw,76px);line-height:.95;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.stat .l{font-family:var(--mono);font-size:12px;text-transform:uppercase;letter-spacing:.1em;opacity:.7;margin-block-start:6px}
+
+.rank{list-style:none;padding:0;margin-block-start:clamp(18px,3vh,32px);display:grid;gap:clamp(8px,1.4vh,14px)}
+.rank li{display:grid;grid-template-columns:2.2ch 1fr auto;gap:14px;align-items:baseline}
+.rank .i{font-family:var(--mono);opacity:.6}
+.rank .nm{font-weight:800;font-size:clamp(22px,3.4vw,46px);letter-spacing:-.02em;line-height:1}
+.rank .v{font-family:var(--mono);font-size:clamp(12px,1.3vw,16px);opacity:.85;text-align:end}
+.rank .bar{grid-column:2/4;block-size:6px;border-radius:3px;background:color-mix(in srgb,currentColor 18%,transparent);overflow:hidden}
+.rank .bar span{display:block;block-size:100%;background:currentColor;transform-origin:left;transform:scaleX(0);transition:transform 1.2s var(--ease)}
+.slide.on .rank .bar span{transform:scaleX(var(--w));transition-delay:calc(var(--d,0) * 120ms + 450ms)}
+.rank li:first-child .nm{font-size:clamp(34px,6vw,84px)}
+
+.split{display:flex;block-size:clamp(70px,14vh,130px);border-radius:14px;overflow:hidden;margin-block-start:clamp(20px,4vh,40px);gap:3px}
+.split div{display:flex;align-items:flex-end;padding:12px;font-family:var(--mono);font-size:12px;font-weight:700;min-inline-size:0;transform-origin:left;transform:scaleX(0);transition:transform 1.3s var(--ease)}
+.slide.on .split div{transform:scaleX(1)}
+.legend{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-block-start:16px}
+.legend div{font-family:var(--mono);font-size:12px;line-height:1.5}
+.legend b{display:block;font-family:var(--display);font-size:clamp(18px,2.4vw,30px);letter-spacing:-.01em}
+
+.eras{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(140px,40%),1fr));gap:10px;margin-block-start:clamp(20px,4vh,40px)}
+.era{border-radius:14px;padding:14px;background:color-mix(in srgb,currentColor 10%,transparent);min-block-size:118px;display:flex;flex-direction:column;justify-content:space-between}
+.era .when{font-family:var(--mono);font-size:11px;opacity:.7;letter-spacing:.06em}
+.era .who{font-weight:800;font-size:clamp(18px,2.2vw,28px);letter-spacing:-.02em;line-height:1}
+.era.gap{background:none;border:2px dashed color-mix(in srgb,currentColor 35%,transparent)}
+.era.now{background:var(--fg);color:var(--bg)}
+
+.heat{display:grid;grid-template-columns:3ch repeat(24,minmax(0,1fr));gap:2px;margin-block-start:clamp(18px,3vh,30px);font-family:var(--mono);font-size:10px}
+.heat .c{aspect-ratio:1;border-radius:3px;background:var(--fg);opacity:0;transition:opacity .8s var(--ease)}
+.slide.on .heat .c{opacity:var(--a);transition-delay:calc(var(--d) * 6ms + 400ms)}
+.heat .h{opacity:.6;text-align:center}
+.heat .w{opacity:.7;align-self:center}
+
+.months{display:flex;align-items:flex-end;gap:4px;block-size:clamp(110px,22vh,220px);margin-block-start:clamp(18px,3vh,30px)}
+.months div{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:6px;block-size:100%}
+.months span{display:block;inline-size:100%;border-radius:4px 4px 0 0;background:currentColor;transform-origin:bottom;transform:scaleY(0);transition:transform 1.1s var(--ease)}
+.slide.on .months span{transform:scaleY(1);transition-delay:calc(var(--d) * 50ms + 400ms)}
+.months span.partial{position:relative}
+.months span.partial::before{content:"";position:absolute;inset-inline:-2px;inset-block-end:0;block-size:var(--pace,100%);border:2px dashed currentColor;border-radius:6px 6px 0 0;opacity:.55}
+.months span.zero{background:none;border-block-start:2px dashed color-mix(in srgb,currentColor 40%,transparent);border-radius:0}
+.months em{font-style:normal;font-family:var(--mono);font-size:10px;opacity:.65}
+
+.calc{display:flex;flex-wrap:wrap;gap:12px;margin-block-start:clamp(18px,3vh,28px);align-items:flex-end}
+.calc label{display:grid;gap:6px;font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.1em}
+.calc input{inline-size:9ch;padding:10px 12px;border-radius:10px;border:2px solid currentColor;background:transparent;font-family:var(--display);font-weight:800;font-size:22px}
+.calc input:focus{outline:none;background:color-mix(in srgb,currentColor 12%,transparent)}
+.verdict{font-weight:800;font-size:clamp(24px,3.4vw,46px);letter-spacing:-.02em;line-height:1.05;margin-block-start:clamp(14px,3vh,26px);min-block-size:2.2em}
+
+.btn{text-decoration:none;display:inline-flex;align-items:center;gap:10px;padding:14px 22px;border-radius:999px;border:0;cursor:pointer;font-weight:800;font-size:16px;background:var(--fg);color:var(--bg);transition:transform .2s var(--ease)}
+.btn:hover{transform:translateY(-2px)}
+.btn.ghosty{background:transparent;color:var(--fg);box-shadow:inset 0 0 0 2px var(--fg)}
+.btn svg{inline-size:18px;block-size:18px}
+.actions{display:flex;flex-wrap:wrap;gap:12px;margin-block-start:clamp(20px,4vh,36px)}
+
+.card{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:clamp(14px,2.4vw,28px) clamp(18px,3vw,40px);margin-block-start:clamp(18px,3vh,30px)}
+.card .stat .n{font-size:clamp(26px,4.2vw,58px)}
+.type{font-weight:800;font-size:min(clamp(40px,8vw,120px),13vh);letter-spacing:-.04em;line-height:.9}
+
+.finale{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:clamp(24px,4vw,64px);align-items:center}
+.preview{block-size:min(74vh,760px);aspect-ratio:9/16;border-radius:22px;box-shadow:0 30px 80px rgba(0,0,0,.5);background:#5b2bff}
+.slide.on .preview[data-r]{transform:rotate(3deg)}
+@media (max-width:760px){
+  .finale{grid-template-columns:1fr;gap:14px}
+  .finale .say,.finale .fine{display:none}
+  .finale .type{font-size:clamp(34px,10vw,56px)}
+  .preview{block-size:min(52vh,460px);justify-self:center}
+  .finale .actions{margin-block-start:14px}
+}
+@media (max-width:600px){
+  .heat{grid-template-columns:3ch repeat(12,minmax(0,1fr))}
+  .heat .odd{display:none}
+  .legend{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .rank li:nth-child(n+6){display:none}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{transition-duration:.01ms!important;transition-delay:0ms!important;animation:none!important}
+}
+</style>
+</head>
+<body>
+<div class="stage" id="stage"></div>
+<div class="bars chrome" id="bars" aria-hidden="true"></div>
+<button class="tap prev" id="prev" aria-label="Previous slide"></button>
+<button class="tap next" id="next" aria-label="Next slide"></button>
+<div class="hint chrome" id="hint">tap or press &rarr;</div>
+
+<script>
+const D=/*__DATA__*/null;
+const WORD='tokount'; // the one place the name lives
+// Mycelium lockups, from the brand book (mycelium-personality public/brand), injected by build.py
+const LOCKUP={white:'__LOCKUP_WHITE__',black:'__LOCKUP_BLACK__'};
+const H=D.handle||'you';
+
+/* ---------- helpers ---------- */
+const $=(s,r=document)=>r.querySelector(s);
+const fmtUSD=n=>'$'+Math.round(n).toLocaleString('en-US');
+const fmtInt=n=>Math.round(n).toLocaleString('en-US');
+function short(n){
+  const u=[[1e12,'T'],[1e9,'B'],[1e6,'M'],[1e3,'K']];
+  for(const [v,s] of u) if(n>=v) return (n/v).toFixed(n/v>=100?0:1).replace(/\.0$/,'')+s;
+  return String(Math.round(n));
+}
+const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const day=iso=>{const [y,m,d]=iso.split('-').map(Number);return `${MONTHS[m-1]} ${d}, ${y}`};
+const mon=ym=>{const [y,m]=ym.split('-').map(Number);return `${MONTHS[m-1]} ’${String(y).slice(2)}`};
+const WD=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const WDL=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+const hr=h=>`${String(h).padStart(2,'0')}:00`;
+const pct=x=>(x*100).toFixed(1).replace(/\.0$/,'')+'%';
+const store={get(k){try{return localStorage.getItem(k)}catch{return null}},set(k,v){try{localStorage.setItem(k,v)}catch{}}};
+
+/* counters: <span data-count="123" data-fmt="usd|int|short|pct"> */
+function runCounters(el){
+  el.querySelectorAll('[data-count]').forEach(n=>{
+    const to=+n.dataset.count, f=n.dataset.fmt||'int';
+    const show=v=>f==='usd'?fmtUSD(v):f==='short'?short(v):f==='pct'?pct(v):fmtInt(v);
+    if(matchMedia('(prefers-reduced-motion: reduce)').matches){n.textContent=show(to);return}
+    const t0=performance.now(), dur=+n.dataset.dur||1800;
+    const tick=t=>{const p=Math.min(1,(t-t0)/dur), e=1-Math.pow(1-p,4);n.textContent=show(to*e);if(p<1)requestAnimationFrame(tick)};
+    n.textContent=show(0);setTimeout(()=>requestAnimationFrame(tick),350);
+  });
+}
+
+/* ---------- derived numbers ---------- */
+const T=D.totals;
+const WAR_AND_PEACE=587287; // words
+const books=D.words/WAR_AND_PEACE;
+const claude=D.agents.find(a=>a.name==='claude')||{cost:0};
+const totalAgentCost=D.agents.reduce((s,a)=>s+a.cost,0);
+const totalAgentTokens=D.agents.reduce((s,a)=>s+a.tokens,0);
+const topModel=D.models[0];
+const wdMax=D.weekday.indexOf(Math.max(...D.weekday));
+const firstAgent=(()=>{const m=D.months[0];return Object.keys(m).find(k=>k!=='month')})();
+const span=D.span, active=D.activeDays;
+const longestDays=D.sessions.longestHours/24;
+
+function archetype(){
+  const ph=D.peakHour;
+  const when = D.night>.3?'Night-Shift':ph<11?'Early-Light':ph<17?'High-Noon':'Golden-Hour';
+  const loyal = topModel.tokens/T.totalTokens;
+  const who = loyal>.6?'Loyalist':D.eras.length>=5?'Shapeshifter':'Collector';
+  return {name:`The ${when} ${who}`,
+    why:`${H}’s hours peak at ${hr(ph)}. ${pct(D.night)} of the work happened between 22:00 and 05:00, across ${D.eras.length} eras and ${D.modelCount} models.`};
+}
+const ARC=archetype();
+
+/* ---------- slides ---------- */
+const P={ // palettes: bg, fg, ghost, blob, chrome
+  lime:['#d4ff3a','#0b0b0f','rgba(11,11,15,.07)','#b6f000','#0b0b0f'],
+  ink:['#0b0b0f','#f6f1e7','rgba(246,241,231,.05)','#2a1fff','#f6f1e7'],
+  magma:['#ff3d2e','#14060a','rgba(20,6,10,.08)','#ff8a00','#14060a'],
+  violet:['#5b2bff','#f6f1e7','rgba(246,241,231,.07)','#ff4fd8','#f6f1e7'],
+  cream:['#f6f1e7','#0b0b0f','rgba(11,11,15,.05)','#ffd23a','#0b0b0f'],
+  teal:['#00c2a8','#04201c','rgba(4,32,28,.08)','#d4ff3a','#04201c'],
+  pink:['#ff8bd1','#1d0420','rgba(29,4,32,.07)','#ffd23a','#1d0420'],
+  blue:['#1238ff','#e8f0ff','rgba(232,240,255,.06)','#0a22b8','#e8f0ff'],
+  sun:['#ffd23a','#1a1200','rgba(26,18,0,.07)','#ff3d2e','#1a1200'],
+};
+
+const S=[];
+/* 1. cold open */
+S.push({p:'ink',html:`
+  <div class="blob"></div>
+  <div class="inner">
+    <img class="lockup" data-r src="${LOCKUP.white}" alt="Mycelium">
+    <div class="kicker" data-r>${day(D.first)} → ${day(D.last)}</div>
+    <div class="huge" data-r style="--d:1">${H}’s<br><span style="color:#d4ff3a" class="word">tokount.</span></div>
+    <p class="say" data-r style="--d:2">${span} days. ${D.agents.length} coding agents. One question: what did all of it add up to?</p>
+  </div>`});
+
+/* 2. how it began */
+S.push({p:'lime',ghost:active,html:`
+  <div class="inner">
+    <div class="kicker" data-r>It started on ${day(D.first)}</div>
+    <div class="big" data-r style="--d:1">${H} showed up on</div>
+    <div class="huge" data-r style="--d:2"><span data-count="${active}">0</span> days</div>
+    <p class="say" data-r style="--d:3">out of ${span}. That's <b>${pct(active/span)}</b> of the calendar with an agent open. The very first one was <b>${firstAgent[0].toUpperCase()+firstAgent.slice(1)}</b>.</p>
+  </div>`});
+
+/* 3. tokens */
+S.push({p:'violet',html:`
+  <div class="blob"></div>
+  <div class="inner">
+    <div class="kicker" data-r>Tokens through the pipes</div>
+    <div class="huge" data-r style="--d:1"><span data-count="${T.totalTokens}" data-fmt="short" data-dur="2400">0</span></div>
+    <p class="say" data-r style="--d:2">Of those, the models <b>wrote</b> ${short(T.outputTokens)} tokens. Roughly ${short(D.words)} words.</p>
+    <div class="row" data-r style="--d:3" >
+      <div class="stat"><div class="n"><span data-count="${books}">0</span>×</div><div class="l">War and Peace, cover to cover</div></div>
+      <div class="stat"><div class="n"><span data-count="${T.inputTokens}" data-fmt="short">0</span></div><div class="l">fresh input</div></div>
+      <div class="stat"><div class="n"><span data-count="${T.cacheReadTokens}" data-fmt="short">0</span></div><div class="l">read from cache</div></div>
+    </div>
+  </div>`});
+
+/* 4. the bill you didn't pay */
+S.push({p:'magma',ghost:'$',html:`
+  <div class="inner">
+    <div class="kicker" data-r>At API list prices</div>
+    <div class="big" data-r style="--d:1">The bill ${H} didn't pay</div>
+    <div class="huge" data-r style="--d:2"><span data-count="${T.totalCost}" data-fmt="usd" data-dur="2600">$0</span></div>
+    <p class="say" data-r style="--d:3">Not an invoice. Just what the same usage would cost at public API list prices.</p>
+    <p class="fine" data-r style="--d:4">Subscription charges are not included in ccusage and may be dramatically lower.</p>
+  </div>`});
+
+/* 5. eras */
+S.push({p:'cream',html:`
+  <div class="inner">
+    <div class="kicker" data-r>${H}’s eras</div>
+    <div class="big" data-r style="--d:1">${D.eras.length} eras.<br>One clear direction.</div>
+    <div class="eras" data-r style="--d:2">${(()=>{
+      let out='',prev=null;
+      D.eras.forEach((e,i)=>{
+        if(prev){const [py,pm]=prev.split('-').map(Number),[y,m]=e.from.split('-').map(Number);
+          if((y*12+m)-(py*12+pm)>1){ const gs=py*12+pm, ge=y*12+m-2, ym=n=>`${Math.floor((n-1)/12)}-${String((n-1)%12+1).padStart(2,'0')}`;
+          out+=`<div class="era gap"><div class="when">${mon(ym(gs+1))}${ge>gs+1?' → '+mon(ym(ge+1)):''}</div><div class="who">The quiet months</div></div>`;}}
+        out+=`<div class="era ${i===D.eras.length-1?'now':''}"><div class="when">${mon(e.from)}${e.to!==e.from?' → '+mon(e.to):''}</div><div class="who">${e.name}</div></div>`;
+        prev=e.to;
+      });return out})()}</div>
+    <p class="fine" data-r style="--d:3">An era is a run of months where one model carried the most tokens.</p>
+  </div>`});
+
+/* 6. top artist */
+S.push({p:'lime',ghost:'#1',html:`
+  <div class="inner">
+    <div class="kicker" data-r>${H}’s top model</div>
+    <ol class="rank">${D.models.slice(0,6).map((m,i)=>`
+      <li data-r style="--d:${i+1}"><span class="i">${i+1}</span><span class="nm">${m.name}</span><span class="v">${short(m.tokens)} tokens</span>
+      <span class="bar"><span style="--w:${(m.tokens/D.models[0].tokens).toFixed(3)};--d:${i+1}"></span></span></li>`).join('')}
+    </ol>
+    <p class="say" data-r style="--d:7"><b>${topModel.name}</b> carried ${pct(topModel.tokens/T.totalTokens)} of every token, from ${day(topModel.first)} to ${day(topModel.last)}.</p>
+  </div>`});
+
+/* 7. agents */
+const AG={claude:'#ff8a3d',codex:'#d4ff3a',gemini:'#7aa2ff'};
+S.push({p:'ink',html:`
+  <div class="inner">
+    <div class="kicker" data-r>${H}’s agents</div>
+    <div class="big" data-r style="--d:1">${pct(claude.tokens/totalAgentTokens)} Claude Code.</div>
+    <div class="split" data-r style="--d:2">${D.agents.map(a=>`<div style="flex:${Math.max(a.tokens/totalAgentTokens,.035)};background:${AG[a.name]||'#fff'};color:#0b0b0f">${pct(a.tokens/totalAgentTokens)}</div>`).join('')}</div>
+    <div class="legend" data-r style="--d:3">${D.agents.map(a=>`<div><b style="color:${AG[a.name]}">${a.name[0].toUpperCase()+a.name.slice(1)}</b>${short(a.tokens)} tokens<br>${a.days} days · ${fmtInt((D.sessionsByAgent||{})[a.name]||0)} sessions</div>`).join('')}</div>
+  </div>`});
+
+/* 8. the month curve, by output (the work written), with the running month marked */
+const DIM=(ym)=>{const [y,m]=ym.split('-').map(Number);return new Date(y,m,0).getDate()};
+const curMonth=D.today.slice(0,7);
+const outMonths=(()=>{const out=[];let [y,m]=D.first.slice(0,7).split('-').map(Number);const [ly,lm]=D.last.slice(0,7).split('-').map(Number);
+  while(y*12+m<=ly*12+lm){const k=`${y}-${String(m).padStart(2,'0')}`;const r=D.monthOut.find(x=>x.month===k)||{out:0,cost:0,days:0};out.push({k,...r});m++;if(m>12){m=1;y++}}return out})();
+const oMax=Math.max(...outMonths.map(m=>m.out));
+const peakOut=outMonths.reduce((a,b)=>b.out>a.out?b:a);
+const cm=outMonths.find(m=>m.k===curMonth);
+const dayOfMonth=+D.today.slice(8);
+const paceOut=cm?cm.out/dayOfMonth*DIM(curMonth):0;
+const perDay=m=>m.out/DIM(m.k)*(m.k===curMonth?DIM(m.k)/dayOfMonth:1);
+const aug=outMonths.find(m=>m.k===(+curMonth.slice(0,4))+'-08')||outMonths[Math.max(0,outMonths.length-4)];
+S.push({p:'blue',html:`
+  <div class="blob"></div>
+  <div class="inner">
+    <div class="kicker" data-r>Tokens written, month by month</div>
+    <div class="big" data-r style="--d:1">${peakOut.k===curMonth?`${mon(peakOut.k)} isn't over, and it's already ${H}’s biggest month.`:`${mon(peakOut.k)} was ${H}’s biggest month.`}</div>
+    <div class="months" data-r style="--d:2">${outMonths.map((m,i)=>`<div><span class="${m.out<1?'zero':''} ${m.k===curMonth?'partial':''}" style="block-size:${m.out<1?2:Math.max(3,m.out/Math.max(oMax,paceOut)*100)}%;--d:${i};${m.k===curMonth?`--pace:${(paceOut/m.out*100).toFixed(1)}%`:''}"></span><em>${MONTHS[+m.k.slice(5)-1][0]}</em></div>`).join('')}</div>
+    <p class="say" data-r style="--d:3">${cm?`<b>${short(perDay(cm))} tokens a day</b> in ${mon(curMonth)}, ${(perDay(cm)/perDay(aug)).toFixed(1)}× ${mon(aug.k)}. At this pace the month ends near ${short(paceOut)}.`:''}</p>
+    <p class="fine" data-r style="--d:4">Output tokens: what the models actually wrote. ${cm?`${mon(curMonth)} is shown so far (solid) and at its current pace (outline).`:''}</p>
+  </div>`});
+
+/* 8b. more for less: list price per million tokens written */
+const effMonths=outMonths.filter(m=>m.out>=5e6).map(m=>({...m,per:m.cost/(m.out/1e6)}));
+const effPeak=effMonths.reduce((a,b)=>b.per>a.per?b:a,effMonths[0]||{per:0});
+const effNow=effMonths[effMonths.length-1]||effPeak;
+const effMax=Math.max(...effMonths.map(m=>m.per));
+if(effMonths.length>=3&&effNow.per<effPeak.per) S.push({p:'teal',ghost:'↓',html:`
+  <div class="inner">
+    <div class="kicker" data-r>More for less</div>
+    <div class="huge" data-r style="--d:1"><span data-count="${1-effNow.per/effPeak.per}" data-fmt="pct">0</span></div>
+    <div class="mid" data-r style="--d:2">cheaper per word than in ${mon(effPeak.k)}.</div>
+    <ol class="rank">${effMonths.map((m,i)=>`
+      <li data-r style="--d:${i+3}"><span class="i">${MONTHS[+m.k.slice(5)-1].slice(0,3)}</span><span class="v" style="text-align:start">${fmtUSD(m.per)} per 1M written</span><span></span>
+      <span class="bar"><span style="--w:${(m.per/effMax).toFixed(3)};--d:${i+3}"></span></span></li>`).join('')}
+    </ol>
+    <p class="say" data-r style="--d:${effMonths.length+3}">A million written tokens cost ${fmtUSD(effPeak.per)} at list price in ${mon(effPeak.k)}, and ${fmtUSD(effNow.per)} in ${mon(effNow.k)}. ${H} writes more, and each word costs less.</p>
+  </div>`});
+
+/* 8c. fewer, heavier sessions (Claude Code) */
+const sm=D.sessMonths.filter(m=>m.n>=20);
+const smPeak=sm.reduce((a,b)=>b.n>a.n?b:a,sm[0]||{n:0,out:1});
+const smNow=sm[sm.length-1]||smPeak;
+if(sm.length>=2&&smNow.month!==smPeak.month) S.push({p:'pink',html:`
+  <div class="inner">
+    <div class="kicker" data-r>How ${H} works now · Claude Code</div>
+    <div class="big" data-r style="--d:1">Fewer sessions.<br>Heavier ones.</div>
+    <div class="row" data-r style="--d:2">
+      <div class="stat"><div class="n">${fmtInt(smPeak.n)} → ${fmtInt(smNow.n)}</div><div class="l">sessions started, ${mon(smPeak.month)} → ${mon(smNow.month)}</div></div>
+      <div class="stat"><div class="n">${short(smPeak.out/smPeak.n)} → ${short(smNow.out/smNow.n)}</div><div class="l">tokens written per session</div></div>
+    </div>
+    <p class="say" data-r style="--d:3">Each session now carries <b>${(smNow.out/smNow.n/(smPeak.out/smPeak.n)).toFixed(1)}×</b> the work it did in ${mon(smPeak.month)}. ${H} stopped opening new windows and started staying in them.</p>
+    <p class="fine" data-r style="--d:4">Sessions counted in the month they started.${smNow.month===curMonth?` ${mon(curMonth)} is so far.`:''}</p>
+  </div>`});
+
+/* 9. biggest day */
+S.push({p:'sun',ghost:D.bigDay.date.slice(8),html:`
+  <div class="inner">
+    <div class="kicker" data-r>${H}’s biggest day</div>
+    <div class="big" data-r style="--d:1">${day(D.bigDay.date)}</div>
+    <div class="row" data-r style="--d:2" >
+      <div class="stat"><div class="n"><span data-count="${D.bigDay.tokens}" data-fmt="short">0</span></div><div class="l">tokens</div></div>
+      <div class="stat"><div class="n">${D.bigDay.models.length}</div><div class="l">models at once</div></div>
+    </div>
+    <p class="say" data-r style="--d:3">${D.bigDay.models.join(', ')}, all in the same day. Whatever happened on ${WDL[(new Date(D.bigDay.date+'T12:00:00').getDay()+6)%7]}, it was a lot.</p>
+  </div>`});
+
+/* 10. streak */
+S.push({p:'teal',ghost:D.streak.days,html:`
+  <div class="inner">
+    <div class="kicker" data-r>Longest streak</div>
+    <div class="huge" data-r style="--d:1"><span data-count="${D.streak.days}">0</span> days</div>
+    <div class="mid" data-r style="--d:2">in a row, without missing one.</div>
+    <p class="say" data-r style="--d:3">${day(D.streak.from)} to ${day(D.streak.to)}. Weekends included.</p>
+  </div>`});
+
+/* 11. when you work */
+const hMax=Math.max(...D.heat.flat());
+S.push({p:'violet',html:`
+  <div class="inner">
+    <div class="kicker" data-r>When ${H} works · local time</div>
+    <div class="big" data-r style="--d:1">${hr(D.peakHour)} is ${H}’s hour.</div>
+    <div class="heat" data-r style="--d:2">
+      <span></span>${Array.from({length:24},(_,h)=>`<span class="h ${h%2?'odd':''}">${h%6===0?h:''}</span>`).join('')}
+      ${D.heat.map((row,w)=>`<span class="w">${WD[w][0]}</span>`+row.map((v,h)=>`<span class="c ${h%2?'odd':''}" style="--a:${(.08+.92*Math.pow(v/hMax,.7)).toFixed(2)};--d:${w*24+h}" title="${WD[w]} ${hr(h)} · ${short(v)} tokens"></span>`).join('')).join('')}
+    </div>
+    <p class="say" data-r style="--d:3">${WDL[wdMax]} is ${H}’s heaviest day. <b>${pct(D.night)}</b> of the work happened after 22:00 or before 05:00.</p>
+    <p class="fine" data-r style="--d:4">Hours come from Claude Code's 5-hour usage blocks, spread over the hours each block was active.</p>
+  </div>`});
+
+/* 12. déjà vu */
+S.push({p:'pink',ghost:'%',html:`
+  <div class="inner">
+    <div class="kicker" data-r>Déjà vu</div>
+    <div class="huge" data-r style="--d:1"><span data-count="${D.cacheShare}" data-fmt="pct">0</span></div>
+    <div class="mid" data-r style="--d:2">of every token was a re-read.</div>
+    <p class="say" data-r style="--d:3">The models mostly read their own memory again: ${short(T.cacheReadTokens)} cached tokens against ${short(T.inputTokens)} new ones. That's why long sessions stay affordable.</p>
+  </div>`});
+
+/* 14. type + the story card, previewed exactly as it saves */
+S.push({p:'ink',html:`
+  <div class="blob"></div>
+  <div class="inner finale">
+    <div>
+      <div class="kicker" data-r>${H}’s type</div>
+      <div class="type" data-r style="--d:1">${ARC.name}</div>
+      <p class="say" data-r style="--d:2">${ARC.why}</p>
+      <div class="actions ui" data-r style="--d:3">
+        <button class="btn" id="save"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>Save Story Card</button>
+        <button class="btn ghosty" id="replay">Replay Story</button>
+      </div>
+      <p class="fine" data-r style="--d:4">1080 × 1920, ready for a story. tokount by Mycelium, built ${D.generated.replace('T',' ').slice(0,16)} from ccusage.</p>
+    </div>
+    <img class="preview" id="preview" data-r style="--d:2" alt="${H}’s story card">
+  </div>`,
+  on(el){ $('#save',el).onclick=savePNG; $('#replay',el).onclick=()=>go(0);
+    const pv=$('#preview',el);pv.onload=()=>fit(el);drawCard().then(c=>{pv.src=c.toDataURL('image/png')}); }});
+
+/* 15. the invitation */
+const LANDING='https://mycx.dev/tokount/';
+S.push({p:'lime',ghost:'?',html:`
+  <div class="inner">
+    <img class="lockup" data-r src="${LOCKUP.black}" alt="Mycelium">
+    <div class="kicker" data-r>tokount</div>
+    <div class="huge" data-r style="--d:1">Want your own?</div>
+    <p class="say" data-r style="--d:2">The same story, from your own Claude Code, Codex and Gemini history.</p>
+    <div class="actions ui" data-r style="--d:3">
+      <a class="btn" href="${LANDING}" target="_blank" rel="noopener">Get Your Own tokount<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+      <button class="btn ghosty" id="replay2">Replay Story</button>
+    </div>
+    <p class="fine" data-r style="--d:4">${LANDING.replace('https://','')}</p>
+  </div>`,
+  on(el){ $('#replay2',el).onclick=()=>go(0); }});
+
+/* ---------- render ---------- */
+const stage=$('#stage'), bars=$('#bars');
+S.forEach((s,i)=>{
+  const [bg,fg,gh,blob,chrome]=P[s.p];
+  const el=document.createElement('section');
+  el.className='slide';el.setAttribute('aria-roledescription','slide');el.setAttribute('aria-label',`${i+1} of ${S.length}`);
+  el.style.cssText=`--bg:${bg};--fg:${fg};--ghost:${gh};--blob:${blob}`;
+  el.innerHTML=(s.ghost!==undefined?`<div class="ghost" aria-hidden="true">${s.ghost}</div>`:'')+s.html;
+  s.el=el;s.chrome=chrome;stage.appendChild(el);
+  bars.appendChild(document.createElement('i'));
+});
+
+let cur=-1;
+function go(i,origin){
+  i=Math.max(0,Math.min(S.length-1,i));
+  if(i===cur) return;
+  const prev=S[cur];
+  S.forEach(s=>s.el.classList.remove('was'));
+  if(prev){prev.el.classList.remove('on');prev.el.classList.add('was')}
+  const s=S[i], el=s.el;
+  el.style.setProperty('--ox',origin?origin[0]+'px':'50%');el.style.setProperty('--oy',origin?origin[1]+'px':'50%');
+  // restart reveal
+  el.classList.remove('on');void el.offsetWidth;el.classList.add('on');
+  document.querySelectorAll('.chrome').forEach(c=>c.style.setProperty('--chrome',s.chrome));
+  [...bars.children].forEach((b,k)=>b.classList.toggle('done',k<=i));
+  $('#hint').style.opacity=i===S.length-1?0:.55;
+  // inputs and buttons on the slide must win over the tap zones
+  document.querySelectorAll('.tap').forEach(t=>t.style.pointerEvents=el.querySelector('.ui')?'none':'');
+  cur=i;
+  fit(el);
+  runCounters(el);
+  if(s.on&&!s.bound){s.on(el);s.bound=true}
+}
+/* never out of bounds: the page doesn't scroll, so shrink a slide's content to fit its screen */
+function fit(el){
+  const inner=el.querySelector('.inner');if(!inner)return;
+  inner.style.setProperty('--fit',1);
+  const cs=getComputedStyle(el);
+  const aH=el.clientHeight-parseFloat(cs.paddingTop)-parseFloat(cs.paddingBottom);
+  const aW=el.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight);
+  const k=Math.min(1,aH/inner.scrollHeight,aW/inner.scrollWidth);
+  inner.style.setProperty('--fit',k<1?(k*.98).toFixed(3):1);
+}
+let rz;addEventListener('resize',()=>{clearTimeout(rz);rz=setTimeout(()=>S[cur]&&fit(S[cur].el),80)});
+document.fonts&&document.fonts.ready.then(()=>S[cur]&&fit(S[cur].el));
+$('#next').onclick=e=>go(cur+1,[e.clientX,e.clientY]);
+$('#prev').onclick=e=>go(cur-1,[e.clientX,e.clientY]);
+addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT') return;
+  if(['ArrowRight',' ','PageDown','Enter'].includes(e.key)&&e.target.tagName!=='BUTTON'){e.preventDefault();go(cur+1)}
+  if(['ArrowLeft','PageUp'].includes(e.key)){e.preventDefault();go(cur-1)}
+  if(e.key==='Home') go(0); if(e.key==='End') go(S.length-1);
+});
+// slides with inputs: let clicks on empty space still advance
+stage.addEventListener('click',e=>{
+  if(!S[cur].el.querySelector('.ui')||e.target.closest('.ui')) return;
+  const x=e.clientX/innerWidth;go(x<.3?cur-1:cur+1,[e.clientX,e.clientY]);
+});
+let sx=null;
+addEventListener('touchstart',e=>{sx=e.touches[0].clientX},{passive:true});
+addEventListener('touchend',e=>{if(sx===null)return;const dx=e.changedTouches[0].clientX-sx;if(Math.abs(dx)>50)go(cur+(dx<0?1:-1));sx=null},{passive:true});
+document.querySelectorAll('.word').forEach(w=>w.textContent=WORD+'.');
+document.title=`${H}’s ${WORD}`;
+go(0);
+
+/* ---------- the story card: 1080 x 1920, drawn by hand, key content kept inside the story safe zone (y 220–1680) ---------- */
+async function drawCard(){
+  const F='"Bricolage Grotesque", system-ui, sans-serif', M='"JetBrains Mono", monospace';
+  try{await Promise.all([document.fonts.load(`800 100px ${F}`),document.fonts.load(`400 30px ${M}`),document.fonts.load(`700 30px ${M}`)])}catch{}
+  const W=1080,HH=1920,c=document.createElement('canvas');c.width=W;c.height=HH;const g=c.getContext('2d');
+  const cream='#f6f1e7', ink='#0b0b0f', lime='#d4ff3a', violet='#5b2bff', pink='#ff8bd1', sun='#ffd23a', magma='#ff3d2e';
+  const wrap=(txt,x,y,maxW,lh)=>{const w=String(txt).split(' ');let line='';for(const word of w){const t=line?line+' '+word:word;if(g.measureText(t).width>maxW&&line){g.fillText(line,x,y);y+=lh;line=word}else line=t}g.fillText(line,x,y);return y};
+  const sticker=(txt,x,y,rot,bg,fg,size=42)=>{g.save();g.translate(x,y);g.rotate(rot*Math.PI/180);g.font=`800 ${size}px ${F}`;
+    const w=g.measureText(txt).width+64,h=size+44;g.fillStyle='rgba(0,0,0,.25)';g.beginPath();g.roundRect(8,10,w,h,h/2);g.fill();
+    g.fillStyle=bg;g.beginPath();g.roundRect(0,0,w,h,h/2);g.fill();g.fillStyle=fg;g.textBaseline='middle';g.fillText(txt,32,h/2+2);g.restore()};
+
+  // ground, shapes, the giant number behind everything
+  g.fillStyle=violet;g.fillRect(0,0,W,HH);
+  g.fillStyle=lime;g.beginPath();g.arc(1010,170,330,0,Math.PI*2);g.fill();
+  g.fillStyle=magma;g.beginPath();g.arc(-40,1080,210,0,Math.PI*2);g.fill();
+  g.save();g.translate(540,860);g.rotate(-8*Math.PI/180);g.fillStyle='rgba(255,255,255,.07)';g.font=`800 520px ${F}`;g.textAlign='center';g.fillText(short(T.totalTokens),0,180);g.restore();
+
+  // who and when
+  g.fillStyle=cream;g.font=`700 34px ${M}`;g.fillText('@'+H,80,250);
+  g.font=`400 26px ${M}`;g.globalAlpha=.75;g.fillText(`${day(D.first).toUpperCase()} → ${day(D.last).toUpperCase()}`,80,296);g.globalAlpha=1;
+
+  // the title
+  g.font=`800 150px ${F}`;g.fillStyle=cream;g.fillText(`${H}’s`,68,540);
+  g.fillStyle=lime;g.fillText(WORD+'.',68,690);
+
+  // stickers: the two findings with the most soul
+  if(effMonths.length>=3&&effNow.per<effPeak.per) sticker(`${pct(1-effNow.per/effPeak.per)} cheaper per word`,80,790,-5,pink,'#1d0420');
+  sticker(`${D.streak.days}-day streak`,560,880,4,sun,'#1a1200',40);
+
+  // type
+  g.fillStyle=cream;g.font=`700 24px ${M}`;g.globalAlpha=.7;g.fillText('TYPE',80,1010);g.globalAlpha=1;
+  g.font=`800 76px ${F}`;let y=wrap(ARC.name,80,1088,920,78);
+
+  // the dark panel: month bars and four numbers
+  const py=Math.max(y+56,1200), ph=500;
+  g.fillStyle=ink;g.beginPath();g.roundRect(56,py,968,ph,44);g.fill();
+  g.fillStyle=cream;g.globalAlpha=.6;g.font=`400 22px ${M}`;g.fillText('TOKENS WRITTEN, MONTH BY MONTH',100,py+58);g.globalAlpha=1;
+  const bx=100,bw=880,bh=120,by=py+80,n=outMonths.length,gap=8,cw=(bw-gap*(n-1))/n;
+  const top=Math.max(oMax,paceOut);
+  outMonths.forEach((m,i)=>{const x=bx+i*(cw+gap),h=m.out<1?3:Math.max(6,m.out/top*bh);
+    g.fillStyle=m.k===curMonth?lime:(m.k===peakOut.k?lime:'rgba(246,241,231,.85)');
+    g.beginPath();g.roundRect(x,by+bh-h,cw,h,[6,6,0,0]);g.fill();
+    if(m.k===curMonth&&paceOut>m.out){const hp=paceOut/top*bh;g.setLineDash([8,6]);g.strokeStyle=lime;g.lineWidth=3;g.beginPath();g.roundRect(x,by+bh-hp,cw,hp,[6,6,0,0]);g.stroke();g.setLineDash([])}});
+  const stats=[[short(T.totalTokens),'tokens'],[fmtUSD(T.totalCost),'at list price'],[topModel.name,'top model'],[hr(D.peakHour),'peak hour']];
+  const sy=py+296;
+  stats.forEach((st,i)=>{const x=100+(i%2)*450, yy=sy+Math.floor(i/2)*128;
+    g.fillStyle=i===0?lime:cream;g.font=`800 64px ${F}`;g.fillText(st[0],x,yy);
+    g.fillStyle='rgba(246,241,231,.6)';g.font=`400 22px ${M}`;g.fillText(st[1].toUpperCase(),x,yy+42)});
+
+  // sign-off, below the safe zone on purpose
+  g.fillStyle=cream;g.globalAlpha=.7;g.font=`400 22px ${M}`;g.font=`700 26px ${M}`;g.fillText('want your own? mycx.dev/tokount',80,py+ph+70);
+  g.globalAlpha=.6;g.font=`400 20px ${M}`;g.fillText('made with ccusage',80,py+ph+108);g.globalAlpha=1;
+  try{const lk=new Image();lk.src=LOCKUP.white;await lk.decode();const lh=40,lw=lh*lk.naturalWidth/lk.naturalHeight;g.drawImage(lk,W-80-lw,py+ph+60,lw,lh)}catch{}g.globalAlpha=1;
+  return c;
+}
+async function savePNG(){
+  const c=await drawCard();
+  const a=document.createElement('a');a.download=`${H}-${WORD}-${D.last}.png`;a.href=c.toDataURL('image/png');a.click();
+}
+</script>
+</body>
+</html>

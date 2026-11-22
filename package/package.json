@@ -1,0 +1,29 @@
+{
+  "name": "tokount",
+  "version": "0.1.0",
+  "description": "Turn your Claude Code, Codex and Gemini usage into a shareable 30-day story.",
+  "type": "module",
+  "bin": {
+    "tokount": "bin/tokount.mjs"
+  },
+  "files": [
+    "bin",
+    "lib"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "ccusage",
+    "claude-code",
+    "codex",
+    "gemini",
+    "analytics"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Mycelium-LLC/tokount.git"
+  },
+  "homepage": "https://mycx.dev/tokount/"
+}

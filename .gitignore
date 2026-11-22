@@ -1,0 +1,8 @@
+node_modules/
+.firebase/
+.env
+*.log
+*.tgz
+.DS_Store
+coverage/
+

@@ -1,0 +1,12 @@
+{
+  "name": "tokount-repo",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "test": "npm --prefix service ci --no-audit --no-fund && npm --prefix service test && cd package && npm pack --dry-run",
+    "deploy:service": "gcloud run deploy tokount --source service --project mycelium-hq --region us-central1 --allow-unauthenticated",
+    "deploy:route": "firebase deploy --only hosting:mycx-hosting --project mycelium-hq --config deploy/firebase.json"
+  },
+  "engines": { "node": ">=20" },
+  "license": "MIT"
+}
