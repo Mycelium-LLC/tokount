@@ -36,6 +36,8 @@ test('a story page is noindex with its own share image; a missing one is noindex
   assert.match(html, /<meta name="robots" content="noindex, follow">/);
   assert.match(html, /property="og:image" content="https:\/\/mycx\.dev\/tokount\/ada\/og\.png/);
   assert.match(html, /<title>@ada’s tokount: 1\.5B tokens<\/title>/);
+  assert.match(html, /<link rel="icon" href="\/tokount\/favicon\.svg" type="image\/svg\+xml">/);
+  assert.match(html, /<link rel="apple-touch-icon" href="\/tokount\/apple-touch-icon\.png">/);
   const image = await fetch(`${base}/tokount/ada/og.png`);
   assert.equal(image.status, 200);
   assert.equal(image.headers.get('content-type'), 'image/png');
@@ -59,5 +61,22 @@ test('health, version and telemetry', async () => {
   assert.equal(ok.status, 204);
   const bad = await fetch(`${base}/api/tokount/telemetry`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ command: 'rm -rf', version: '0.1.0' }) });
   assert.equal(bad.status, 400);
+  close();
+});
+
+test('tab and home-screen icons: served with their types, linked from the landing and a story, never a handle', async () => {
+  const { base, close } = await serve();
+  const types = { 'favicon.svg': /svg/, 'favicon.ico': /icon/, 'favicon-32.png': /png/, 'apple-touch-icon.png': /png/, 'icon-192.png': /png/, 'icon-512.png': /png/, 'manifest.webmanifest': /manifest\+json/ };
+  for (const [name, type] of Object.entries(types)) {
+    const res = await fetch(`${base}/tokount/${name}`);
+    assert.equal(res.status, 200, name);
+    assert.match(res.headers.get('content-type'), type, name);
+    assert.ok((await res.arrayBuffer()).byteLength > 100, name);
+  }
+  const landing = await (await fetch(`${base}/tokount/`)).text();
+  for (const href of ['/tokount/favicon.svg', '/tokount/favicon.ico', '/tokount/apple-touch-icon.png', '/tokount/manifest.webmanifest']) assert.ok(landing.includes(`href="${href}"`), href);
+  assert.ok(!landing.includes('rel="icon" href="/tokount/brand.svg"'));
+  const claim = await fetch(`${base}/api/tokount`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ handle: 'favicon.svg', summary: {} }) });
+  assert.equal(claim.status, 400);
   close();
 });

@@ -1,6 +1,6 @@
 {
   "name": "tokount",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Turn your Claude Code, Codex and Gemini CLI history into a shareable 30-day story page.",
   "type": "module",
   "bin": {
