@@ -1,5 +1,5 @@
 import { collectHistory } from './collectors/index.mjs';
-import { estimateCost } from './prices.mjs';
+import { estimateCost, priceOf, pricesGenerated } from './prices.mjs';
 
 const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 const dayFormatter = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' });
@@ -9,7 +9,21 @@ const weekdayIndex = new Map([['Mon', 0], ['Tue', 1], ['Wed', 2], ['Thu', 3], ['
 
 const localDay = value => dayFormatter.format(new Date(value));
 const monthKey = value => String(value).slice(0, 7);
-const prettyModel = id => id.replace(/^claude-/, '').replace(/^gemini-/, 'Gemini ').replace(/^gpt-/, 'GPT-').split('-').map((part, index) => index ? part : part[0]?.toUpperCase() + part.slice(1)).join(' ');
+/** claude-opus-4-5-20251101 → Opus 4.5 · gpt-5.1-codex → GPT-5.1 Codex · gemini-2.5-pro → Gemini 2.5 Pro */
+export function prettyModel(id) {
+  const parts = String(id).replace(/(?:[-@]\d{8}|-\d{4}-\d{2}-\d{2})$/, '').split('-');
+  const family = parts.shift();
+  const words = [];
+  for (const part of parts) {
+    if (/^\d+(\.\d+)?$/.test(part) && /^\d+(\.\d+)?$/.test(words.at(-1) || '') && !words.at(-1).includes('.')) words[words.length - 1] += `.${part}`;
+    else words.push(part);
+  }
+  const title = words.map(word => (/^\d/.test(word) ? word : word[0].toUpperCase() + word.slice(1)));
+  if (family === 'gpt') return [`GPT-${title.shift() || ''}`, ...title].join(' ');
+  if (family === 'gemini') return ['Gemini', ...title].join(' ');
+  if (family === 'claude') return /^\d/.test(title[0] || '') || !title.length ? ['Claude', ...title].join(' ') : title.join(' ');
+  return [family[0].toUpperCase() + family.slice(1), ...title].join(' ');
+}
 const emptyTokens = () => ({ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0, totalCost: 0 });
 const addTokens = (target, item, cost = estimateCost(item)) => {
   target.inputTokens += item.inputTokens;
@@ -94,7 +108,8 @@ export async function collectSummary({ handle, history } = {}) {
     sessMonths: [...sessMonths.values()].sort((a, b) => a.month.localeCompare(b.month)), sessionsByAgent, sessionsAll: sessions.length,
     today: localDay(new Date()), weekday, heat, byHour, peakHour: byHour.indexOf(Math.max(...byHour)), night: [...byHour.slice(22), ...byHour.slice(0, 5)].reduce((sum, value) => sum + value, 0) / totalHour, morning: byHour.slice(5, 10).reduce((sum, value) => sum + value, 0) / totalHour,
     sessions: { count: sessionsByAgent.claude || 0, top: { cost: topSession ? sessionCosts.get(`claude:${topSession.id}`) || 0 : 0, tokens: topSession?.totalTokens || 0, first: topSession?.first || days[0], last: topSession?.last || days.at(-1) }, longestHours: longestSession ? durationHours(longestSession) : 0 },
-    projects: [], words: totals.outputTokens * 0.75
+    projects: [], words: totals.outputTokens * 0.75,
+    pricing: { generated: pricesGenerated, unpricedModels: models.filter(model => !priceOf(model.id)).map(model => model.id) }
   };
 }
 
