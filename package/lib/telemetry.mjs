@@ -1,7 +1,7 @@
 import { VERSION } from './version.mjs';
 
 /**
- * Optional run telemetry, sent once per run through the tokount service, which logs it for
+ * Optional run telemetry, sent once per publish or doctor run (never a dry run) through the tokount service, which logs it for
  * HQ Ops. It holds the version, OS family, Node major, the command, its duration, a stable
  * error code, and each adapter's counts and schema. Never a path, handle, model, prompt,
  * response or token count. Off with TOKOUNT_TELEMETRY=0 (or DO_NOT_TRACK=1).
