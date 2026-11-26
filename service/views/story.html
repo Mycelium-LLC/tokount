@@ -268,7 +268,7 @@ S.push({p:'magma',ghost:'$',html:`
     <div class="big" data-r style="--d:1">The bill ${H} didn't pay</div>
     <div class="huge" data-r style="--d:2"><span data-count="${T.totalCost}" data-fmt="usd" data-dur="2600">$0</span></div>
     <p class="say" data-r style="--d:3">Not an invoice. Just what the same usage would cost at public API list prices.</p>
-    <p class="fine" data-r style="--d:4">Subscription charges are not included in ccusage and may be dramatically lower.</p>
+    <p class="fine" data-r style="--d:4">List prices for every token. A subscription may have cost far less.</p>
   </div>`});
 
 /* 5. eras */
@@ -420,7 +420,7 @@ S.push({p:'ink',html:`
         <button class="btn" id="save"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>Save Story Card</button>
         <button class="btn ghosty" id="replay">Replay Story</button>
       </div>
-      <p class="fine" data-r style="--d:4">1080 × 1920, ready for a story. tokount by Mycelium, built ${D.generated.replace('T',' ').slice(0,16)} from ccusage.</p>
+      <p class="fine" data-r style="--d:4">1080 × 1920, ready for a story. tokount by Mycelium, built ${D.generated.replace('T',' ').slice(0,16)} from local history.</p>
     </div>
     <img class="preview" id="preview" data-r style="--d:2" alt="${H}’s story card">
   </div>`,
@@ -559,7 +559,7 @@ async function drawCard(){
 
   // sign-off, below the safe zone on purpose
   g.fillStyle=cream;g.globalAlpha=.7;g.font=`400 22px ${M}`;g.font=`700 26px ${M}`;g.fillText('want your own? mycx.dev/tokount',80,py+ph+70);
-  g.globalAlpha=.6;g.font=`400 20px ${M}`;g.fillText('made with ccusage',80,py+ph+108);g.globalAlpha=1;
+  g.globalAlpha=.6;g.font=`400 20px ${M}`;g.fillText('counted by tokount',80,py+ph+108);g.globalAlpha=1;
   try{const lk=new Image();lk.src=LOCKUP.white;await lk.decode();const lh=40,lw=lh*lk.naturalWidth/lk.naturalHeight;g.drawImage(lk,W-80-lw,py+ph+60,lw,lh)}catch{}g.globalAlpha=1;
   return c;
 }
