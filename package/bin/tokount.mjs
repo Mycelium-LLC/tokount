@@ -25,6 +25,7 @@ const HELP = `
 
   npx tokount --handle <name>       read your history here, publish the story for 30 days
   npx tokount --dry-run             read and print the summary, publish nothing
+  npx tokount --json                print the exact summary that would be sent, publish nothing
   npx tokount doctor                what each history reader found (counts only)
   npx tokount --version
 
@@ -105,13 +106,14 @@ async function run() {
   if (positionals[0] === 'doctor') { command = 'doctor'; return doctor(); }
   if (positionals.length) throw new TokountError('E_USAGE', `unknown command "${positionals[0]}".\n${HELP}`);
 
-  const dryRun = Boolean(values['dry-run']);
+  const dryRun = Boolean(values['dry-run'] || values.json); // --json prints the summary that would be sent, and sends nothing
   command = dryRun ? 'dry-run' : 'publish';
   const handle = String(values.handle || (dryRun ? 'preview' : '')).toLowerCase();
   if (!HANDLE.test(handle)) throw new TokountError('E_HANDLE', 'pass a handle with --handle: 2–39 letters, numbers, dots, dashes or underscores.');
 
-  console.log(`\n  tokount ${VERSION} by Mycelium`);
-  console.log('  Reading your Claude Code, Codex and Gemini history here…');
+  const say = values.json ? () => {} : line => console.log(line);
+  say(`\n  tokount ${VERSION} by Mycelium`);
+  say('  Reading your Claude Code, Codex and Gemini history here…');
   const history = await collectHistory();
   reports = history.reports;
   if (!history.events.length) throw new TokountError('E_NO_HISTORY', 'no Claude Code, Codex or Gemini usage history was found on this computer.');
