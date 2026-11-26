@@ -36,3 +36,21 @@ Setup: Windows 11 Pro, Node v22.17.1.
 - **The npx.cmd and shell fix**, or drop the npx dependency once the own collectors (`package/lib/collectors/`, still uncommitted on the Mac) replace the ccusage path.
 - **Add `--dry-run`**, to print the summary without publishing.
 - **Once the collectors are pushed,** the Windows session can rerun against that branch.
+
+## What 0.1.0 changed (2026-11-26, session C9)
+
+- **No npx left.** The CLI reads Claude Code, Codex and Gemini history itself (`package/lib/collectors/`); it spawns nothing, so `npx.cmd` and `shell: true` no longer apply.
+- **`--dry-run`** prints the summary and publishes nothing; `--json` prints the exact summary that would be sent; `doctor` prints what each reader found (counts only).
+- **CI runs on Windows** (`windows-latest` in `.github/workflows/ci.yml`), including the CLI tests that spawn the real binary.
+
+## Rerun on the release branch
+
+Asked for on 2026-11-26, on branch `session/C9-folio-public-release` (then `release/0.1.0`):
+
+```powershell
+cd package; npm test
+$env:TOKOUNT_TELEMETRY='0'; node bin/tokount.mjs doctor
+node bin/tokount.mjs --dry-run
+```
+
+Result: recorded in `docs/qa/0.1.0.md` when it comes back.
