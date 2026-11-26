@@ -3,7 +3,8 @@ import { diagnostic, event, listFiles, readJson, toSessions, validTimestamp } fr
 /**
  * Gemini CLI saves each chat as JSON under <home>/.gemini/tmp/<project-hash>/chats/.
  * A `gemini` message carries tokens { input, output, cached, thoughts, tool, total };
- * input includes the cached part, so fresh input is input - cached.
+ * input includes the cached part, so fresh input is input - cached. Thoughts are billed as
+ * output but kept apart from it, as Gemini reports them.
  */
 export const GEMINI_SCHEMA = 'gemini-chat-message-v2';
 
@@ -26,7 +27,7 @@ export async function collectGemini(roots) {
       const item = event({
         agent: 'gemini', sessionId: String(document.sessionId), timestamp: message.timestamp, model: message.model,
         input: Math.max(0, (message.tokens.input || 0) - cached), output: message.tokens.output,
-        cacheRead: cached, cacheWrite: 0
+        cacheRead: cached, cacheWrite: 0, reasoning: message.tokens.thoughts
       });
       if (!item.totalTokens) { report.skipped++; continue; }
       events.push(item);

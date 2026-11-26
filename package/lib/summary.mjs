@@ -1,5 +1,5 @@
 import { collectHistory } from './collectors/index.mjs';
-import { estimateCost } from './pricing.mjs';
+import { estimateCost } from './prices.mjs';
 
 const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 const dayFormatter = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' });
