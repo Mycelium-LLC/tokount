@@ -25,9 +25,9 @@ Cost is at list prices from [`package/lib/prices.json`](package/lib/prices.json)
 
 ## Privacy and ownership
 
-- Only a derived summary leaves the computer: totals, dates, model names and patterns. Prompts, responses, code, file paths and project names never do.
+- Only a derived summary leaves the computer: totals, dates, model names and patterns (no time zone). Prompts, responses, code, file paths and project names never do.
 - The first publish creates a claim token in `~/.config/tokount/credentials.json`. A handle can only be changed with its token, and expiry doesn't release it.
-- Optional run telemetry sends the version, OS, Node major, command, duration, an error code and each reader's counts. `TOKOUNT_TELEMETRY=0` (or `DO_NOT_TRACK=1`) turns it off. See [docs/analytics.md](docs/analytics.md).
+- A publish and `doctor` send optional run telemetry: the version, OS, Node major, command, duration, an error code and each reader's counts. `TOKOUNT_TELEMETRY=0` (or `DO_NOT_TRACK=1`) turns it off. A dry run sends nothing. See [docs/analytics.md](docs/analytics.md).
 
 ## Layout
 

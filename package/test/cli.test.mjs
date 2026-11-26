@@ -76,13 +76,21 @@ test('telemetry payload is counts only', async () => {
   assert.ok(!JSON.stringify(payload).includes(home));
 });
 
-test('--dry-run prints the summary and publishes nothing', async () => {
+test('--dry-run, --json, --version and --help make no network call', async () => {
   const api = await fakeApi();
   const home = await makeHome();
-  const { code, stdout } = await cli(['--dry-run'], { TOKOUNT_HISTORY_HOME: home, TOKOUNT_API: api.url, TOKOUNT_TELEMETRY: '0' });
+  // Telemetry left on: a dry run must still make no network call at all.
+  const { code, stdout } = await cli(['--dry-run'], { TOKOUNT_HISTORY_HOME: home, TOKOUNT_API: api.url });
+  const json = await cli(['--json'], { TOKOUNT_HISTORY_HOME: home, TOKOUNT_API: api.url });
+  const version = await cli(['--version'], { TOKOUNT_API: api.url });
+  const help = await cli(['--help'], { TOKOUNT_API: api.url });
   api.close();
   assert.equal(code, 0);
   assert.match(stdout, /Dry run: nothing was published/);
+  assert.equal(JSON.parse(json.stdout).schemaVersion, 1);
+  assert.equal(JSON.parse(json.stdout).tz, undefined, 'no time zone in the summary');
+  assert.equal(version.code, 0);
+  assert.equal(help.code, 0);
   assert.equal(api.hits.length, 0);
 });
 

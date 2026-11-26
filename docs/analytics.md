@@ -25,9 +25,9 @@ A handle appears only as a one-way, domain-separated 12-character hash (`handleK
 
 ## CLI telemetry
 
-One `POST /api/tokount/telemetry` per run, 2.5 s timeout, no retry, never shown to the user when it fails. The service keeps only these fields and logs them as `cli.run`:
+One `POST /api/tokount/telemetry` per publish or `doctor` run (a dry run, `--json`, `--version` and `--help` make no network call at all), 2.5 s timeout, no retry, never shown to the user when it fails. The service keeps only these fields and logs them as `cli.run`:
 
-`cliVersion`, `os`, `arch`, `node` (major), `command` (`publish`, `dry-run`, `doctor`, `help`, `version`), `durationMs`, `error` (a stable code: `E_HANDLE`, `E_NO_HISTORY`, `E_NETWORK`, `E_TAKEN`, `E_REJECTED`, `E_SERVER`, `E_USAGE`, `E_UNEXPECTED`), and per reader `agent`, `schema`, `found`, `files`, `records`, `accepted`, `skipped`, `duplicates`, `invalidJson`, `unreadable`, `ms`.
+`cliVersion`, `os`, `arch`, `node` (major), `command` (`publish` or `doctor`), `durationMs`, `error` (a stable code: `E_HANDLE`, `E_NO_HISTORY`, `E_NETWORK`, `E_TAKEN`, `E_REJECTED`, `E_SERVER`, `E_USAGE`, `E_UNEXPECTED`), and per reader `agent`, `schema`, `found`, `files`, `records`, `accepted`, `skipped`, `duplicates`, `invalidJson`, `unreadable`, `ms`.
 
 `TOKOUNT_TELEMETRY=0` or `DO_NOT_TRACK=1` turns it off. Publishing still writes the server events above, which the public link needs to work.
 

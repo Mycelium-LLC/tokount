@@ -33,8 +33,10 @@ const HELP = `
   Prompts, responses, code, file paths and project names never do.
   Your handle is yours: a token saved in ~/.config/tokount protects it.
 
-  Anonymous run counts (version, OS, how many records each reader accepted, errors)
-  help keep the readers working. Turn them off with TOKOUNT_TELEMETRY=0.
+  A publish and doctor send anonymous run counts (version, OS, how many records each
+  reader accepted, an error code) to keep the readers working. --dry-run, --json,
+  --version and --help send nothing. Turn the counts off with TOKOUNT_TELEMETRY=0
+  or DO_NOT_TRACK=1.
 `;
 
 /** A failure the user can act on, with a stable code for telemetry. */
@@ -45,8 +47,11 @@ class TokountError extends Error {
 let command = 'publish';
 let reports = [];
 
+/** Only a publish and doctor report counts. A dry run, --json, --version and --help send nothing at all. */
+const REPORTED = new Set(['publish', 'doctor']);
+
 async function finish(error) {
-  await sendTelemetry(API, telemetryPayload({ command, durationMs: Date.now() - started, error: error?.code || (error ? 'E_UNEXPECTED' : null), reports }));
+  if (REPORTED.has(command) && error?.code !== 'E_USAGE') await sendTelemetry(API, telemetryPayload({ command, durationMs: Date.now() - started, error: error?.code || (error ? 'E_UNEXPECTED' : null), reports }));
   if (error) {
     console.error(`\n  tokount: ${error instanceof TokountError ? error.message : `something went wrong (${error.message || error}).`}`);
     if (error.code !== 'E_USAGE') console.error(`  code ${error.code || 'E_UNEXPECTED'} · tokount ${VERSION} · run \`npx tokount doctor\` for details\n`);
@@ -74,7 +79,7 @@ function parse(argv) {
 }
 
 function printSummary(summary, history) {
-  console.log(`\n  ${summary.first} → ${summary.last} · ${fmt.format(summary.activeDays)} active days · ${summary.tz}`);
+  console.log(`\n  ${summary.first} → ${summary.last} · ${fmt.format(summary.activeDays)} active days · ${Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'}`);
   console.log(`  ${compact.format(summary.totals.totalTokens)} tokens · ${usd.format(summary.totals.totalCost)} at list prices\n`);
   for (const agent of summary.agents) console.log(`  ${agent.name.padEnd(8)} ${compact.format(agent.tokens).padStart(8)} tokens  ${usd.format(agent.cost).padStart(9)}  ${fmt.format(agent.days)} days`);
   console.log(`\n  Top models: ${summary.models.slice(0, 3).map(model => model.name).join(', ')}`);

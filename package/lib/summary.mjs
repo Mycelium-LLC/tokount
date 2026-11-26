@@ -99,7 +99,7 @@ export async function collectSummary({ handle, history } = {}) {
   const lastDate = new Date(`${days.at(-1)}T12:00:00Z`);
 
   return {
-    schemaVersion: 1, handle, generated: new Date().toISOString(), tz: TZ, first: days[0], last: days.at(-1), span: Math.round((lastDate - firstDate) / 86_400_000) + 1, activeDays: days.length,
+    schemaVersion: 1, handle, generated: new Date().toISOString(), first: days[0], last: days.at(-1), span: Math.round((lastDate - firstDate) / 86_400_000) + 1, activeDays: days.length,
     totals, cacheShare: totals.cacheReadTokens / Math.max(1, totals.totalTokens), streak,
     bigDay: { date: bigDay.period, cost: bigDay.totalCost, tokens: bigDay.totalTokens, models: [...bigDay.models].map(prettyModel) }, bigTokDay: { date: bigDay.period, tokens: bigDay.totalTokens },
     agents, models: models.slice(0, 8), modelCount: models.length, eras,
