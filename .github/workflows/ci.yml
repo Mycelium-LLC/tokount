@@ -10,7 +10,13 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # Hosted minutes first; ACTIONS_RUNNER_MODE=self-hosted moves the job to the pool when they run out.
+    runs-on: ${{ vars.ACTIONS_RUNNER_MODE != 'self-hosted' && matrix.os || fromJSON('["self-hosted","mycelium-linux-deploy"]') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Windows is where the CLI broke once (spawn npx ENOENT); it stays in the matrix.
+        os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -19,4 +25,3 @@ jobs:
           cache: npm
           cache-dependency-path: service/package-lock.json
       - run: npm test
-

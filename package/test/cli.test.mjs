@@ -35,7 +35,7 @@ async function fakeApi() {
 }
 
 async function cli(args, env) {
-  try { const out = await run(process.execPath, [bin, ...args], { env: { PATH: process.env.PATH, ...env } }); return { code: 0, ...out }; }
+  try { const out = await run(process.execPath, [bin, ...args], { env: { ...process.env, TOKOUNT_API: '', TOKOUNT_TELEMETRY: '', DO_NOT_TRACK: '', ...env } }); return { code: 0, ...out }; }
   catch (error) { return { code: error.code, stdout: error.stdout, stderr: error.stderr }; }
 }
 
