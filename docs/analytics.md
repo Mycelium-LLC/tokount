@@ -1,31 +1,38 @@
 # Analytics and observability
 
-tokount measures product health without collecting history content.
+tokount measures its own health without collecting history content. It follows HQ Ops §51: it emits, Ops interprets. It has no monitoring, alerting or error store of its own.
 
-## Service events
+## Where each signal goes
 
-Every structured Cloud Logging event includes `event`, `release`, and `eventId`.
+| Signal | Path | Read by |
+|---|---|---|
+| Structured request logs (below) | stdout → Cloud Logging, service `tokount` in `mycelium-hq` | the estate's log bucket and its log-based alerts (policy `gcp-log-sink`), HQ traces |
+| Cloud Run 5xx and instance counts | Cloud Monitoring | policy `gcp-run-errors-baseline` → Ops |
+| A failed request | `POST <ops>/v1/events`, type `tokount.request_failed`, with the service's own ID token (`tokount-web@mycelium-hq`) | HQ Ops tenant `tokount` |
+| Liveness | Ops route probes of `mycx.dev/tokount/` and `mycx.dev/api/tokount/health` | HQ Ops tenant `tokount` |
+
+## Service log events
+
+Every line is JSON with `severity`, `event`, `release` (the version), `revision` and `eventId`.
 
 - `landing.view`
 - `story.view`, `story.missing`, `story.expired`
 - `publish.create`, `publish.update`, `publish.conflict`, `publish.reject`
+- `cli.run` (CLI telemetry, below)
 - `service.error`
 
-Handles are represented only by a one-way, domain-separated 12-character hash. Logs never contain raw handles, IP addresses added by application code, prompts, responses, paths, projects, or history records.
+A handle appears only as a one-way, domain-separated 12-character hash (`handleKey`). Logs never hold a raw handle, an IP address added by the app, prompts, responses, paths, projects or history records.
 
-## CLI events
+## CLI telemetry
 
-The maintained collectors may report version, OS family, adapter/schema versions, duration, accepted/skipped record counts, and stable error codes. `TOKOUNT_TELEMETRY=0` disables optional CLI telemetry. Publishing still creates the minimum server events needed to operate the public link.
+One `POST /api/tokount/telemetry` per publish or `doctor` run (a dry run, `--json`, `--version` and `--help` make no network call at all), 2.5 s timeout, no retry, never shown to the user when it fails. The service keeps only these fields and logs them as `cli.run`:
 
-## Release metrics
+`cliVersion`, `os`, `arch`, `node` (major), `command` (`publish` or `doctor`), `durationMs`, `error` (a stable code: `E_HANDLE`, `E_NO_HISTORY`, `E_NETWORK`, `E_TAKEN`, `E_REJECTED`, `E_SERVER`, `E_USAGE`, `E_UNEXPECTED`), and per reader `agent`, `schema`, `found`, `files`, `records`, `accepted`, `skipped`, `duplicates`, `invalidJson`, `unreadable`, `ms`.
 
-Create log-based metrics grouped by `release` for:
+`TOKOUNT_TELEMETRY=0` or `DO_NOT_TRACK=1` turns it off. Publishing still writes the server events above, which the public link needs to work.
 
-- publish success and conflict rates;
-- service error rate;
-- unknown collector schema rate;
-- adapter success rate by OS family;
-- landing → first publish conversion;
-- active and expired story views.
+## Questions these answer
 
-Alerts should fire on service errors, publish failure regressions, and a new unknown-schema fingerprint. Structural fingerprints must be redacted and opt-in before they leave the machine.
+- Does a reader still work on each OS? `cli.run` by `os`, `adapters[].accepted`, `adapters[].unreadable`.
+- Did a release break publishing? `publish.*` and `cli.run.error` by `release`.
+- Is anyone using it? `landing.view` → `publish.create`, and `story.view`.

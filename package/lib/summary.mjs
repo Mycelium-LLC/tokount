@@ -1,91 +1,135 @@
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
-const exec = promisify(execFile);
-const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+import { collectHistory } from './collectors/index.mjs';
+import { estimateCost, priceOf, pricesGenerated } from './prices.mjs';
 
-async function ccusage(args) {
-  const { stdout } = await exec('npx', ['--yes', 'ccusage@20.0.51', ...args], {
-    maxBuffer: 64 * 1024 * 1024,
-    timeout: 8 * 60 * 1000
-  });
-  return JSON.parse(stdout);
+const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+const dayFormatter = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' });
+const hourFormatter = new Intl.DateTimeFormat('en-US', { timeZone: TZ, hour: '2-digit', hourCycle: 'h23' });
+const weekdayFormatter = new Intl.DateTimeFormat('en-US', { timeZone: TZ, weekday: 'short' });
+const weekdayIndex = new Map([['Mon', 0], ['Tue', 1], ['Wed', 2], ['Thu', 3], ['Fri', 4], ['Sat', 5], ['Sun', 6]]);
+
+const localDay = value => dayFormatter.format(new Date(value));
+const monthKey = value => String(value).slice(0, 7);
+/** claude-opus-4-5-20251101 → Opus 4.5 · gpt-5.1-codex → GPT-5.1 Codex · gemini-2.5-pro → Gemini 2.5 Pro */
+export function prettyModel(id) {
+  const parts = String(id).replace(/(?:[-@]\d{8}|-\d{4}-\d{2}-\d{2})$/, '').split('-');
+  const family = parts.shift();
+  const words = [];
+  for (const part of parts) {
+    if (/^\d+(\.\d+)?$/.test(part) && /^\d+(\.\d+)?$/.test(words.at(-1) || '') && !words.at(-1).includes('.')) words[words.length - 1] += `.${part}`;
+    else words.push(part);
+  }
+  const title = words.map(word => (/^\d/.test(word) ? word : word[0].toUpperCase() + word.slice(1)));
+  if (family === 'gpt') return [`GPT-${title.shift() || ''}`, ...title].join(' ');
+  if (family === 'gemini') return ['Gemini', ...title].join(' ');
+  if (family === 'claude') return /^\d/.test(title[0] || '') || !title.length ? ['Claude', ...title].join(' ') : title.join(' ');
+  return [family[0].toUpperCase() + family.slice(1), ...title].join(' ');
 }
-const isoDay = value => String(value).slice(0, 10);
-const monthKey = value => isoDay(value).slice(0, 7);
-const prettyModel = id => id.replace(/^claude-/, '').replace(/^gemini-/, 'Gemini ').replace(/^gpt-/, 'GPT-').split('-').map((p, i) => i ? p : p[0]?.toUpperCase() + p.slice(1)).join(' ');
-export async function collectSummary({ handle }) {
-  const [daily, sessions, blocks] = await Promise.all([
-    ccusage(['daily', '--json', '--by-agent', '-z', TZ]),
-    ccusage(['session', '--json', '-z', TZ]),
-    ccusage(['blocks', '--json'])
-  ]);
-  const rows = daily.daily || [];
-  if (!rows.length) throw new Error('ccusage did not find any usage history.');
-  const totals = daily.totals;
-  const days = rows.map(r => r.period).sort();
-  const daySet = new Set(days);
-  let best = 0, run = 0, bestEnd = days[0];
-  for (let d = new Date(`${days[0]}T12:00:00Z`), end = new Date(`${days.at(-1)}T12:00:00Z`); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
-    const key = d.toISOString().slice(0, 10);
-    if (daySet.has(key)) { run++; if (run > best) { best = run; bestEnd = key; } } else run = 0;
+const emptyTokens = () => ({ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0, totalCost: 0 });
+const addTokens = (target, item, cost = estimateCost(item)) => {
+  target.inputTokens += item.inputTokens;
+  target.outputTokens += item.outputTokens;
+  target.cacheReadTokens += item.cacheReadTokens;
+  target.cacheCreationTokens += item.cacheCreationTokens;
+  target.totalTokens += item.totalTokens;
+  target.totalCost += cost;
+};
+
+export async function collectSummary({ handle, history } = {}) {
+  const source = history || await collectHistory();
+  const events = source.events;
+  if (!events.length) throw new Error('No supported Claude Code, Codex, or Gemini usage history was found. Run `tokount doctor` for details.');
+
+  const totals = emptyTokens();
+  const dayMap = new Map();
+  const agentMap = new Map();
+  const modelMap = new Map();
+  const eraMonths = new Map();
+  const months = new Map();
+  const monthOut = new Map();
+  const weekday = Array(7).fill(0);
+  const heat = Array.from({ length: 7 }, () => Array(24).fill(0));
+  const sessionCosts = new Map();
+
+  for (const item of events) {
+    const cost = estimateCost(item);
+    const day = localDay(item.timestamp);
+    const month = monthKey(day);
+    const weekdayNumber = weekdayIndex.get(weekdayFormatter.format(new Date(item.timestamp)));
+    const hour = Number(hourFormatter.format(new Date(item.timestamp)));
+    addTokens(totals, item, cost);
+    weekday[weekdayNumber] += item.totalTokens;
+    heat[weekdayNumber][hour] += item.totalTokens;
+
+    const dayRow = dayMap.get(day) || { period: day, ...emptyTokens(), models: new Set() };
+    addTokens(dayRow, item, cost); dayRow.models.add(item.model); dayMap.set(day, dayRow);
+    const agent = agentMap.get(item.agent) || { name: item.agent, cost: 0, tokens: 0, daySet: new Set() };
+    agent.cost += cost; agent.tokens += item.totalTokens; agent.daySet.add(day); agentMap.set(item.agent, agent);
+    const model = modelMap.get(item.model) || { id: item.model, name: prettyModel(item.model), cost: 0, tokens: 0, out: 0, first: day, last: day, daySet: new Set(), agent: item.agent };
+    model.cost += cost; model.tokens += item.totalTokens; model.out += item.outputTokens; model.first = model.first < day ? model.first : day; model.last = model.last > day ? model.last : day; model.daySet.add(day); modelMap.set(item.model, model);
+    const era = eraMonths.get(month) || new Map(); era.set(item.model, (era.get(item.model) || 0) + item.totalTokens); eraMonths.set(month, era);
+    const agentMonth = months.get(month) || { month }; agentMonth[item.agent] = (agentMonth[item.agent] || 0) + cost; months.set(month, agentMonth);
+    const outputMonth = monthOut.get(month) || { month, out: 0, cost: 0, daySet: new Set() };
+    outputMonth.out += item.outputTokens; outputMonth.cost += cost; outputMonth.daySet.add(day); monthOut.set(month, outputMonth);
+    const sessionKey = `${item.agent}:${item.sessionId}`; sessionCosts.set(sessionKey, (sessionCosts.get(sessionKey) || 0) + cost);
   }
-  const bestStartDate = new Date(`${bestEnd}T12:00:00Z`);
-  bestStartDate.setUTCDate(bestStartDate.getUTCDate() - best + 1);
-  const agentMap = new Map(), modelMap = new Map(), eraMonths = new Map(), months = new Map(), monthOut = new Map(), weekday = Array(7).fill(0);
-  for (const row of rows) {
-    const date = new Date(`${row.period}T12:00:00Z`);
-    weekday[(date.getUTCDay() + 6) % 7] += row.totalTokens || 0;
-    const mk = monthKey(row.period), mo = monthOut.get(mk) || { month: mk, out: 0, cost: 0, days: 0 };
-    mo.out += row.outputTokens || 0; mo.cost += row.totalCost || 0; mo.days++; monthOut.set(mk, mo);
-    for (const a of row.agents || []) {
-      const ag = agentMap.get(a.agent) || { name: a.agent, cost: 0, tokens: 0, days: 0 };
-      ag.cost += a.totalCost || 0; ag.tokens += a.totalTokens || 0; ag.days++; agentMap.set(a.agent, ag);
-      const mm = months.get(mk) || { month: mk }; mm[a.agent] = (mm[a.agent] || 0) + (a.totalCost || 0); months.set(mk, mm);
-      for (const mb of a.modelBreakdowns || []) {
-        const modelTokens = (mb.inputTokens || 0) + (mb.outputTokens || 0) + (mb.cacheReadTokens || 0) + (mb.cacheCreationTokens || 0);
-        const m = modelMap.get(mb.modelName) || { id: mb.modelName, name: prettyModel(mb.modelName), cost: 0, tokens: 0, out: 0, first: row.period, last: row.period, days: 0, agent: a.agent };
-        m.cost += mb.cost || 0; m.tokens += modelTokens; m.out += mb.outputTokens || 0; m.days++; m.first = m.first < row.period ? m.first : row.period; m.last = m.last > row.period ? m.last : row.period; modelMap.set(mb.modelName, m);
-        const em = eraMonths.get(mk) || new Map(); em.set(mb.modelName, (em.get(mb.modelName) || 0) + modelTokens); eraMonths.set(mk, em);
-      }
-    }
+
+  const rows = [...dayMap.values()].sort((a, b) => a.period.localeCompare(b.period));
+  const days = rows.map(row => row.period);
+  const streak = longestStreak(days);
+  const models = [...modelMap.values()].map(model => ({ ...model, days: model.daySet.size, daySet: undefined })).sort((a, b) => b.tokens - a.tokens);
+  const eras = dominantEras(eraMonths);
+  const agents = [...agentMap.values()].map(agent => ({ name: agent.name, cost: agent.cost, tokens: agent.tokens, days: agent.daySet.size })).sort((a, b) => b.tokens - a.tokens);
+  const sessions = source.sessions || [];
+  const sessionsByAgent = {};
+  const sessMonths = new Map();
+  for (const session of sessions) {
+    sessionsByAgent[session.agent] = (sessionsByAgent[session.agent] || 0) + 1;
+    const month = monthKey(localDay(session.first));
+    const row = sessMonths.get(month) || { month, n: 0, out: 0 };
+    row.n++; row.out += session.outputTokens || 0; sessMonths.set(month, row);
   }
-  const models = [...modelMap.values()].sort((a, b) => b.tokens - a.tokens);
-  const eras = [];
-  for (const [month, breakdown] of [...eraMonths.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
-    const id = [...breakdown.entries()].sort((a, b) => b[1] - a[1])[0][0];
-    if (eras.at(-1)?.id === id) eras.at(-1).to = month; else eras.push({ id, name: prettyModel(id), from: month, to: month });
-  }
-  const sessionRows = sessions.sessions || sessions.session || [];
-  const sessionsByAgent = {}, sessMonths = new Map();
-  const claudeSessions = [];
-  for (const s of sessionRows) {
-    const agent = s.agent || 'claude'; sessionsByAgent[agent] = (sessionsByAgent[agent] || 0) + 1;
-    const mk = monthKey(s.firstActivity || s.lastActivity || days.at(-1)); const sm = sessMonths.get(mk) || { month: mk, n: 0, out: 0 }; sm.n++; sm.out += s.outputTokens || 0; sessMonths.set(mk, sm);
-    if (agent === 'claude') {
-      claudeSessions.push(s);
-    }
-  }
-  const blockRows = blocks.blocks || [], heat = Array.from({ length: 7 }, () => Array(24).fill(0));
-  for (const b of blockRows) {
-    if (b.isGap) continue;
-    const start = new Date(b.startTime), end = new Date(b.actualEndTime || b.endTime), hours = Math.max(1, Math.floor((end - start) / 3600000) + 1), share = (b.totalTokens || 0) / hours;
-    for (let i = 0; i < hours; i++) { const t = new Date(start.getTime() + i * 3600000); heat[(t.getDay() + 6) % 7][t.getHours()] += share; }
-  }
-  const byHour = Array.from({ length: 24 }, (_, h) => heat.reduce((sum, row) => sum + row[h], 0));
-  const totalHour = byHour.reduce((a, b) => a + b, 0) || 1;
+  const claudeSessions = sessions.filter(session => session.agent === 'claude');
+  const durationHours = session => Math.max(0, (new Date(session.last) - new Date(session.first)) / 3_600_000);
+  const topSession = [...claudeSessions].sort((a, b) => (sessionCosts.get(`claude:${b.id}`) || 0) - (sessionCosts.get(`claude:${a.id}`) || 0))[0];
+  const longestSession = [...claudeSessions].sort((a, b) => durationHours(b) - durationHours(a))[0];
   const bigDay = [...rows].sort((a, b) => b.totalTokens - a.totalTokens)[0];
-  const firstDate = new Date(`${days[0]}T12:00:00Z`), lastDate = new Date(`${days.at(-1)}T12:00:00Z`);
-  const durationHours = s => Math.max(0, (new Date(s.lastActivity) - new Date(s.firstActivity)) / 3_600_000);
-  const topSession = [...claudeSessions].sort((a, b) => (b.totalCost || 0) - (a.totalCost || 0))[0] || {};
-  const longestSession = [...claudeSessions].sort((a, b) => durationHours(b) - durationHours(a))[0] || {};
+  const byHour = Array.from({ length: 24 }, (_, hour) => heat.reduce((sum, row) => sum + row[hour], 0));
+  const totalHour = byHour.reduce((sum, value) => sum + value, 0) || 1;
+  const firstDate = new Date(`${days[0]}T12:00:00Z`);
+  const lastDate = new Date(`${days.at(-1)}T12:00:00Z`);
+
   return {
-    schemaVersion: 1, handle, generated: new Date().toISOString(), tz: TZ, first: days[0], last: days.at(-1), span: Math.round((lastDate - firstDate) / 86400000) + 1, activeDays: days.length,
-    totals, cacheShare: (totals.cacheReadTokens || 0) / Math.max(1, totals.totalTokens || 1), streak: { days: best, from: bestStartDate.toISOString().slice(0, 10), to: bestEnd },
-    bigDay: { date: bigDay.period, cost: bigDay.totalCost, tokens: bigDay.totalTokens, models: (bigDay.modelsUsed || []).map(prettyModel) }, bigTokDay: { date: bigDay.period, tokens: bigDay.totalTokens },
-    agents: [...agentMap.values()].sort((a, b) => b.cost - a.cost), models: models.slice(0, 8), modelCount: models.length, eras,
-    months: [...months.values()].sort((a, b) => a.month.localeCompare(b.month)), monthOut: [...monthOut.values()].sort((a, b) => a.month.localeCompare(b.month)), sessMonths: [...sessMonths.values()].sort((a, b) => a.month.localeCompare(b.month)), sessionsByAgent, sessionsAll: sessionRows.length,
-    today: new Date().toISOString().slice(0, 10), weekday, heat, byHour, peakHour: byHour.indexOf(Math.max(...byHour)), night: [...byHour.slice(22), ...byHour.slice(0, 5)].reduce((a, b) => a + b, 0) / totalHour, morning: byHour.slice(5, 10).reduce((a, b) => a + b, 0) / totalHour,
-    sessions: { count: sessionsByAgent.claude || 0, top: { cost: topSession.totalCost || 0, tokens: topSession.totalTokens || 0, first: topSession.firstActivity || days[0], last: topSession.lastActivity || days.at(-1) }, longestHours: durationHours(longestSession) },
-    projects: [], words: (totals.outputTokens || 0) * 0.75
+    schemaVersion: 1, handle, generated: new Date().toISOString(), first: days[0], last: days.at(-1), span: Math.round((lastDate - firstDate) / 86_400_000) + 1, activeDays: days.length,
+    totals, cacheShare: totals.cacheReadTokens / Math.max(1, totals.totalTokens), streak,
+    bigDay: { date: bigDay.period, cost: bigDay.totalCost, tokens: bigDay.totalTokens, models: [...bigDay.models].map(prettyModel) }, bigTokDay: { date: bigDay.period, tokens: bigDay.totalTokens },
+    agents, models: models.slice(0, 8), modelCount: models.length, eras,
+    months: [...months.values()].sort((a, b) => a.month.localeCompare(b.month)),
+    monthOut: [...monthOut.values()].map(row => ({ month: row.month, out: row.out, cost: row.cost, days: row.daySet.size })).sort((a, b) => a.month.localeCompare(b.month)),
+    sessMonths: [...sessMonths.values()].sort((a, b) => a.month.localeCompare(b.month)), sessionsByAgent, sessionsAll: sessions.length,
+    today: localDay(new Date()), weekday, heat, byHour, peakHour: byHour.indexOf(Math.max(...byHour)), night: [...byHour.slice(22), ...byHour.slice(0, 5)].reduce((sum, value) => sum + value, 0) / totalHour, morning: byHour.slice(5, 10).reduce((sum, value) => sum + value, 0) / totalHour,
+    sessions: { count: sessionsByAgent.claude || 0, top: { cost: topSession ? sessionCosts.get(`claude:${topSession.id}`) || 0 : 0, tokens: topSession?.totalTokens || 0, first: topSession?.first || days[0], last: topSession?.last || days.at(-1) }, longestHours: longestSession ? durationHours(longestSession) : 0 },
+    projects: [], words: totals.outputTokens * 0.75,
+    pricing: { generated: pricesGenerated, unpricedModels: models.filter(model => !priceOf(model.id)).map(model => model.id) }
   };
+}
+
+function longestStreak(days) {
+  const set = new Set(days);
+  let best = 0, run = 0, bestEnd = days[0];
+  for (let date = new Date(`${days[0]}T12:00:00Z`), end = new Date(`${days.at(-1)}T12:00:00Z`); date <= end; date.setUTCDate(date.getUTCDate() + 1)) {
+    const key = date.toISOString().slice(0, 10);
+    if (set.has(key)) { run++; if (run > best) { best = run; bestEnd = key; } } else run = 0;
+  }
+  const start = new Date(`${bestEnd}T12:00:00Z`); start.setUTCDate(start.getUTCDate() - best + 1);
+  return { days: best, from: start.toISOString().slice(0, 10), to: bestEnd };
+}
+
+function dominantEras(source) {
+  const eras = [];
+  for (const [month, breakdown] of [...source.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    const id = [...breakdown.entries()].sort((a, b) => b[1] - a[1])[0][0];
+    if (eras.at(-1)?.id === id) eras.at(-1).to = month;
+    else eras.push({ id, name: prettyModel(id), from: month, to: month });
+  }
+  return eras;
 }

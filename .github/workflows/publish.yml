@@ -11,6 +11,7 @@ permissions:
 
 jobs:
   publish:
+    # npm provenance and Trusted Publishing accept GitHub-hosted runners only, so this job never moves to the pool.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,7 +25,8 @@ jobs:
         run: test "$(node -p "require('./package/package.json').version")" = "$GITHUB_REF_NAME"
       - name: Verify package
         run: npm test
+      - name: Stamp the commit (tokount --version prints it)
+        run: echo "{\"commit\":\"$GITHUB_SHA\"}" > package/lib/build.json
       - name: Publish with provenance
         working-directory: package
         run: npm publish --access public --provenance
-
