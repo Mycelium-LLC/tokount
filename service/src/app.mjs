@@ -11,6 +11,9 @@ const root = join(here, '..');
 const DAY = 86_400_000;
 const SITE = 'https://mycx.dev/tokount';
 const HANDLE = /^[a-z0-9](?:[a-z0-9._-]{0,37}[a-z0-9])?$/;
+/** The tab and home-screen icons, served at /tokount/<name>. These names (and the other files under /tokount/) can never be a handle. */
+const ICONS = { 'favicon.svg': 'image/svg+xml', 'favicon.ico': 'image/x-icon', 'favicon-32.png': 'image/png', 'apple-touch-icon.png': 'image/png', 'icon-192.png': 'image/png', 'icon-512.png': 'image/png', 'manifest.webmanifest': 'application/manifest+json' };
+const RESERVED = new Set([...Object.keys(ICONS), 'brand.svg', 'og.png', 'version.json']);
 const hash = token => crypto.createHash('sha256').update(token).digest('hex');
 const safeJson = value => JSON.stringify(value).replaceAll('<', '\\u003c').replaceAll('>', '\\u003e');
 const attr = value => String(value).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
@@ -71,6 +74,7 @@ function storyHead(handle, summary) {
 }
 
 export async function createApp({ store, now = () => Date.now() }) {
+  const icons = new Map(await Promise.all(Object.keys(ICONS).map(async name => [name, await readFile(join(root, 'brand', 'icon', name))])));
   const [landing, template, white, black] = await Promise.all([
     readFile(join(root, 'public', 'index.html'), 'utf8'),
     readFile(join(root, 'views', 'story.html'), 'utf8'),
@@ -93,6 +97,9 @@ export async function createApp({ store, now = () => Date.now() }) {
   app.get(['/api/health', '/api/tokount/health'], health);
   app.get('/tokount/version.json', (_req, res) => res.json({ app: 'tokount', version: VERSION, commit: COMMIT, builtAt: process.env.BUILT_AT || null }));
   app.get('/tokount/brand.svg', (_req, res) => res.type('svg').set('cache-control', 'public, max-age=86400').send(white));
+  for (const [name, type] of Object.entries(ICONS)) {
+    app.get(`/tokount/${name}`, (_req, res) => res.type(type).set('cache-control', 'public, max-age=86400').send(icons.get(name)));
+  }
   app.get(['/tokount', '/tokount/'], (req, res) => { logEvent('landing.view', { eventId: req.eventId }); res.type('html').set('cache-control', 'public, max-age=300').send(landing); });
   app.get('/tokount/og.png', (_req, res) => {
     landingImage ||= png(landingSvg());
@@ -108,7 +115,7 @@ export async function createApp({ store, now = () => Date.now() }) {
 
   app.post('/api/tokount', async (req, res) => {
     const handle = String(req.body?.handle || '').toLowerCase();
-    if (!HANDLE.test(handle)) { logEvent('publish.reject', { eventId: req.eventId, reason: 'invalid_handle' }, 'WARNING'); return res.status(400).json({ error: 'Invalid handle.' }); }
+    if (!HANDLE.test(handle) || RESERVED.has(handle)) { logEvent('publish.reject', { eventId: req.eventId, reason: 'invalid_handle' }, 'WARNING'); return res.status(400).json({ error: 'Invalid handle.' }); }
     const problem = validateSummary(req.body?.summary, handle);
     if (problem) { logEvent('publish.reject', { eventId: req.eventId, handleKey: handleKey(handle), reason: 'invalid_summary' }, 'WARNING'); return res.status(400).json({ error: problem }); }
     const supplied = String(req.body?.claimToken || '');

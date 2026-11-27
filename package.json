@@ -1,7 +1,7 @@
 {
   "name": "tokount-repo",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "scripts": {
     "test": "npm --prefix service ci --no-audit --no-fund && npm --prefix service test && npm --prefix package test && cd package && npm pack --dry-run",
     "deploy:service": "deploy/deploy.sh"
